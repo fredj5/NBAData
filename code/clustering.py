@@ -1,74 +1,10 @@
 # Packages
 import pandas as pd
-import numpy as np
 import os
 from sklearn.cluster import AgglomerativeClustering, KMeans
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import StandardScaler
-from PIL import Image
-import cv2 as cv
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-import requests
-from bs4 import BeautifulSoup
-from pyts.approximation import SymbolicAggregateApproximation
-
-def scrape_current_season(url):
-    # URL to current szn stats
-    response = requests.get(url)
-     # Check if the request was successful (status code 200)
-    if response.status_code == 200:
-        # Parse the HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Find the table containing team statistics
-        table = soup.find('table', {'id': 'per_game-team'})
-
-        # Convert the HTML table to a Pandas DataFrame
-        df = pd.read_html(str(table))[0]
-
-        # Remove unnecessary rows and columns
-        df = df.dropna()
-
-        return df
-
-    else:
-        print(f"Failed to retrieve data from {url}. Status Code: {response.status_code}")
-        return None
-
-def scrape_advanced_team_stats(url):
-    """
-    Scrape advanced team statistics from the provided URL.
-
-    Parameters:
-        url (str): URL of the NBA advanced team statistics page.
-
-    Returns:
-        DataFrame: DataFrame containing advanced team statistics.
-    """
-    # Send a GET request to the URL
-    response = requests.get(url)
-
-    # Check if the request was successful (status code 200)
-    if response.status_code == 200:
-        # Parse the HTML content
-        soup = BeautifulSoup(response.text, 'html.parser')
-
-        # Find the table containing advanced team statistics
-        table = soup.find('table', {'id': 'advanced-team'})
-
-        # Convert the HTML table to a Pandas DataFrame
-        df = pd.read_html(str(table))[0]
-
-        # Remove unnecessary rows and columns
-        df = df.dropna()
-
-        return df
-
-    else:
-        print(f"Failed to retrieve data from {url}. Status Code: {response.status_code}")
-        return None
-
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.decomposition import PCA
 
 # Read in CSV files for season averages by team
 def read_season_stats(folder_path):
@@ -88,7 +24,7 @@ def read_season_stats(folder_path):
             file_path = os.path.join(folder_path, file)
 
             # Dataframing
-            dataframe_name = os.path.splitext(file)[0]  # Use the file name as the DataFrame name
+            dataframe_name = os.path.splitext(file)[0]
             dataframes[dataframe_name] = pd.read_csv(file_path)
 
     return dataframes
@@ -110,27 +46,14 @@ def read_advanced_stats(adv_folder_path):
             file_path = os.path.join(adv_folder_path, file)
 
             # Dataframing
-            dataframe_name = os.path.splitext(file)[0]  # Use the file name as the DataFrame name
+            dataframe_name = os.path.splitext(file)[0] 
             dataframes[dataframe_name] = pd.read_csv(file_path)
 
     return dataframes
 
 def merge_dataframes(dict1, dict2):
-    """
-    Merge DataFrames from two dictionaries I made
-
-    Parameters:
-        - dict1 (dict): Seasonal stats dictionary.
-        - dict2 (dict): Advanced stats dictionary.
-        - common_column (str): The common column to use for merging, in this case it will be TEAM.
-
-    Returns:
-        dict: A new dictionary with merged DataFrames containing seasonal and advanced stats from the same season.
-    """
     # Merged dictionaries
     merged_dict = {}
-
-    # Merge DataFrames based on the common column
 
     # Iterate through the keys in the first dictionary
     for key1, dataframe1 in dict1.items():
@@ -146,7 +69,7 @@ def merge_dataframes(dict1, dict2):
 
     return merged_dict
 
-def clean_dataframes(dict):
+def clean_dicts(dict):
     
     cleaned_dict = {}
 
@@ -161,10 +84,8 @@ def clean_dataframes(dict):
         df = df.loc[:, ~df.columns.str.contains('Rk_y')]        
         df = df.rename(columns={'Rk_x': 'Rk', 'Team_x': 'Team'})
         
-        # Convert "team name" column to lowercase
+        # Convert team name column to lowercase
         df['Team'] = df['Team'].str.lower()
-        # df['Team'] = df['Team'].str.replace('*', '')    # Remove * for indicating a playoff team for uniformity between seasons
-
 
         # Drop empty columns
         df = df.dropna(how='all')
@@ -174,77 +95,31 @@ def clean_dataframes(dict):
     return cleaned_dict
 
 
-# def logistic_regression(dataframes, curr_szn_key):
-
-
-
 def main():
-
-    # URLs for current season data
-    per_game_url = "https://www.basketball-reference.com/leagues/NBA_2024.html#per_game-team"
-    advanced_url = "https://www.basketball-reference.com/leagues/NBA_2024.html#advanced-team"
-
-    # Scrape team statistics
-    per_game_data = scrape_current_season(per_game_url)
-    advanced_data = scrape_advanced_team_stats(advanced_url)
-
 
     # Paths to CSV data
     folder_path = "/Users/freddiejones/Desktop/CIS563/project/szn-stats"
     adv_folder_path = "/Users/freddiejones/Desktop/CIS563/project/advanced-stats"
+    
 
     # Read in CSVs, clean data
     all_seasonal_dataframes = read_season_stats(folder_path)
-    clean_seasonal_dataframes = clean_dataframes(all_seasonal_dataframes)
+    clean_seasonal_dataframes = clean_dicts(all_seasonal_dataframes)
     
     all_advanced_dataframes = read_advanced_stats(adv_folder_path)
-    clean_advanced_dataframes = clean_dataframes(all_advanced_dataframes)
+    clean_advanced_dataframes = clean_dicts(all_advanced_dataframes)
+
 
     # Dictionary with dataframe of stats for every season
     merged_data = merge_dataframes(clean_seasonal_dataframes, clean_advanced_dataframes)
-    clean_merged_data = clean_dataframes(merged_data)
-    
+    clean_merged_data = clean_dicts(merged_data)
+
     # Concatenate all dataframes into a single dataframe for clustering
     every_szn_df = pd.concat(clean_merged_data.values(), ignore_index=True)
     every_szn_df['Team'] = every_szn_df['Season_Year'].astype(str) + ' ' + every_szn_df['Team']
     print(every_szn_df)
-
-    # Mapping teams to logos
-    logo_folder = '/Users/freddiejones/Desktop/CIS563/project/logos/'
-    team_image_mapping = {
-        'boston celtics': 'celtics.png',
-        'los angeles clippers': 'clippers.png',
-        'houston rockets': 'rockets.png',
-        'minnesota timberwolves': 'timberwolves.png',
-        'portland trail blazers': 'blazers.png',
-        'oklahoma city thunder': 'thunder.png',
-        'san antonio spurs': 'spurs.png',
-        'phoenix suns': 'suns.png',
-        'dallas mavericks': 'mavericks.png',
-        'denver nuggets': 'nuggets.png',
-        'golden state warriors': 'warriors.png',
-        'los angeles lakers': 'lakers.png',
-        'miami heat': 'heat.png',
-        'toronto raptors': 'raptors.png',
-        'atlanta hawks': 'hawks.png',
-        'detroit pistons': 'pistons.png',
-        'washington wizards': 'wizards.png',
-        'sacramento kings': 'kings.png',
-        'new orleans pelicans': 'pelicans.png',
-        'philadelphia 76ers': 'sixers.png',
-        'new york knicks': 'knicks.png',
-        'brooklyn nets': 'nets.png',
-        'cleveland cavaliers': 'cavaliers.png',
-        'charlotte bobcats': 'hornets.png',
-        'indiana pacers': 'pacers.png',
-        'orlando magic': 'magic.png',
-        'memphis grizzlies': 'grizzlies.png',
-        'milwaukee bucks': 'bucks.png',
-        'utah jazz': 'jazz.png',
-        'chicago bulls': 'bulls.png'
-    }
     
-    # Clustering.....
+    # Every column for reference
     columns_for_clustering = ['FG', 'FGA', 'FG%', '3P', '3PA', '3P%', '2P',
                               '2PA', '2P%', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TRB', 'AST', 'STL',
                               'BLK', 'TOV', 'PF', 'PTS', 'Age', 'W', 'L', 'PW',
@@ -252,50 +127,87 @@ def main():
                               '3PAr', 'TS%', 'eFG%', 'TOV%', 'ORB%', 'FT/FGA', 'eFG%.1', 'TOV%.1',
                               'DRB%', 'FT/FGA.1']
     
-    # for key, df in clean_merged_data.items():
     # Drop any remaining NaN values
     every_szn_df = every_szn_df.dropna()
 
-    # Apply KMeans clustering
+    # Group by season and calculate average values for each season
+    time_series_data = every_szn_df.groupby('Season_Year').mean()
+    percentage_columns_to_plot = ['FG%', '3P%', 'FT%', 'TS%', 'eFG%']
+    other_columns_to_plot = ['3P', '3PA', '2P', '2PA', 'PTS', 'Pace', 'FTA']
+
+    # Plotting the time series
+    plt.figure(figsize=(12, 6))
+
+    for column in percentage_columns_to_plot:
+        plt.plot(time_series_data.index, time_series_data[column], marker='o', linestyle='-', label=column)
+
+    plt.title('League Average Percentage Per Season')
+    plt.xlabel('Year')
+    plt.ylabel('Percentages')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # Plotting the time series
+    plt.figure(figsize=(12, 6))
+
+    for column in other_columns_to_plot:
+        plt.plot(time_series_data.index, time_series_data[column], marker='o', linestyle='-', label=column)
+
+    plt.title('League Average Shooting Volume/Pace')
+    plt.xlabel('Year')
+    plt.ylabel('Average')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    # Standard
+    minmax = MinMaxScaler()
     scaler = StandardScaler()
-    clustering_data = scaler.fit_transform(every_szn_df[['FG', 'FGA', 'FG%', '3P', '3PA', '3P%', '2P',
-                              '2PA', '2P%', 'FT', 'FTA', 'FT%', 'ORB', 'DRB', 'TRB', 'AST', 'STL',
-                              'BLK', 'TOV', 'PF', 'PTS', 'Age', 'W', 'L', 'PW',
-                              'PL', 'MOV', 'SOS', 'SRS', 'ORtg', 'DRtg', 'NRtg', 'Pace', 'FTr',
-                              '3PAr', 'TS%', 'eFG%', 'TOV%', 'ORB%']])
+    clustering_data = every_szn_df[['FG%', '3P%', 'FT%', 'ORB', 'DRB', 'AST', 'STL',
+                                   'BLK', 'TOV', 'PTS', 'W', 'L', 'NRtg', 'Champion',
+                                   'TS%', 'eFG%', 'eFG%.1']]
+    
+    clustering_data = minmax.fit_transform(clustering_data)
 
     
+    # PCA
+    n_components = 2
+    pca = PCA(n_components=n_components)
+    reduced_data = pca.fit_transform(clustering_data)
+
     # KMeans
-    kmeans = KMeans(n_clusters=6, random_state=26)
+    kmeans = KMeans(n_clusters=4, random_state=26)
     every_szn_df['KMeans_Cluster'] = kmeans.fit_predict(clustering_data)
 
     # Apply Agglomerative clustering
-    agg_clustering = AgglomerativeClustering(n_clusters=8)
+    agg_clustering = AgglomerativeClustering(n_clusters=6, linkage='ward')
     every_szn_df['Agg_Cluster'] = agg_clustering.fit_predict(clustering_data)
 
     # Print the results
     print(f"Results for large DataFrame:")
     print(every_szn_df[['Team', 'KMeans_Cluster', 'Agg_Cluster']])
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.scatter(every_szn_df['ORtg'], every_szn_df['DRtg'], c='black', alpha=0)  # Use a constant color and make the points transparent
+    # Create plot for cultsering
+    fig, ax = plt.subplots(figsize=(10, 8))
+    ax.scatter(reduced_data[:, 0], reduced_data[:, 1], c='black', alpha=0)
 
-    # Visualize the clusters
-    # plt.scatter(df['ORtg'], df['DRtg'], c=df['KMeans_Cluster'], cmap='viridis', label='KMeans Clusters')
-    plt.scatter(every_szn_df['ORtg'], every_szn_df['DRtg'], c=every_szn_df['Agg_Cluster'], cmap='plasma', label='Agg Clusters')
-        
+    # Visualize the clusters (agglomerative or KMeans)
+    # plt.scatter(reduced_data[:, 0], reduced_data[:, 1], c=every_szn_df['KMeans_Cluster'], cmap='plasma', label='KMeans Clusters')
+    plt.scatter(reduced_data[:, 0], reduced_data[:, 1], c=every_szn_df['Agg_Cluster'], cmap='plasma', label='Agg Clusters')
+    
     # Annotate points with team names
     for i, team_name in enumerate(every_szn_df['Team']):
-        plt.annotate(team_name, (every_szn_df['ORtg'].iloc[i], every_szn_df['DRtg'].iloc[i]), textcoords="offset points", xytext=(0, 5), ha='center', fontsize=6)
+        plt.annotate(team_name, (reduced_data[i, 0], reduced_data[i, 1]), textcoords="offset points", xytext=(0, 5), ha='center', fontsize=6)
         
     # Make the quadrants and the diagonal
     ax.plot([.5, .5], [0, 1], transform=ax.transAxes, alpha=0.15)
     ax.plot([0, 1], [.5, .5], transform=ax.transAxes, alpha=0.15)
     ax.plot([.1, .9], [.9, .1], transform=ax.transAxes, alpha=0.15)
 
-
-    plt.xlabel('ORtg')
-    plt.ylabel('DRtg')
+    # Label and display clusters
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
     plt.title(f'Clustering like teams since 1985')
     plt.legend()
     plt.show()
